@@ -353,6 +353,29 @@ export const UpdateChapterProgressMutation = graphql(`
   }
 `);
 
+export const ChapterIdRangeQuery = graphql(`
+  query ChapterIdRange($mangaId: Int!, $filter: ChapterFilterInput) {
+    chapters(condition: { mangaId: $mangaId }, filter: $filter) {
+      totalCount
+      nodes {
+        id
+      }
+    }
+  }
+`);
+
+export const UpdateChaptersMutation = graphql(`
+  mutation UpdateChapters($ids: [Int!]!, $patch: UpdateChapterPatchInput!) {
+    updateChapters(input: { ids: $ids, patch: $patch }) {
+      chapters {
+        id
+        isRead
+        lastPageRead
+      }
+    }
+  }
+`);
+
 export const MangaChaptersQuery = graphql(`
   query MangaChapters($mangaId: Int!, $first: Int, $order: [ChapterOrderInput!]) {
     chapters(condition: { mangaId: $mangaId }, order: $order, first: $first) {

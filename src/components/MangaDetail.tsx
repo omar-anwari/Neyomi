@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery } from 'urql';
+import { useClient, useMutation, useQuery } from 'urql';
 import {
   MangaDetailQuery,
   MangaChaptersQuery,
   UpdateMangaLibraryMutation,
+  UpdateChaptersMutation,
+  ChapterIdRangeQuery,
   FetchMangaAndChaptersMutation,
 } from '../operations';
 import { mangaStatusLabel, formatEpochMs, chapterLabel } from '../format';
-import { Chip, Skeleton, LoadMoreButton, ErrorState } from './ui';
+import { Chip, Skeleton, LoadMoreButton, ErrorState, Spinner } from './ui';
 import {
   BookOpenIcon,
+  CheckIcon,
   ChevronLeftIcon,
   BookmarkIcon,
   ExternalLinkIcon,
@@ -247,51 +250,133 @@ function ChapterList({
   const nodes = list?.nodes ?? [];
   const showLoading = initializing || (fetching && nodes.length === 0);
 
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const [anchor, setAnchor] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [truncated, setTruncated] = useState(false);
+  const [, updateChapters] = useMutation(UpdateChaptersMutation);
+  const client = useClient();
+
+  function exitSelection() {
+    setSelecting(false);
+    setSelected(new Set());
+    setAnchor(null);
+    setTruncated(false);
+  }
+
+  async function extendBy(direction: 'earlier' | 'later') {
+    if (selected.size !== 1) return;
+    const [only] = [...selected];
+    const chapter = nodes.find((c) => c.id === only);
+    if (!chapter) return;
+
+    setBusy(true);
+    setTruncated(false);
+    const filter =
+      direction === 'earlier'
+        ? { sourceOrder: { lessThan: chapter.sourceOrder } }
+        : { sourceOrder: { greaterThan: chapter.sourceOrder } };
+    const res = await client.query(ChapterIdRangeQuery, { mangaId, filter }).toPromise();
+    setBusy(false);
+
+    const range = res.data?.chapters;
+    if (!range) return;
+    const ids = range.nodes.map((n) => n.id);
+    if (ids.length < range.totalCount) setTruncated(true);
+    setSelected((prev) => new Set([...prev, ...ids]));
+  }
+
+  function beginSelection(id: number, index: number) {
+    setSelecting(true);
+    setSelected(new Set([id]));
+    setAnchor(index);
+  }
+
+  function toggle(id: number, index: number, extend: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (extend && anchor != null) {
+        const [from, to] = anchor < index ? [anchor, index] : [index, anchor];
+        for (let i = from; i <= to; i += 1) next.add(nodes[i].id);
+        return next;
+      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setAnchor(index);
+  }
+
+  async function markSelected(read: boolean) {
+    if (selected.size === 0) return;
+    setBusy(true);
+    const patch = read ? { isRead: true } : { isRead: false, lastPageRead: 0 };
+    const res = await updateChapters({ ids: [...selected], patch });
+    setBusy(false);
+    if (!res.error) exitSelection();
+  }
+
+  const allSelected = nodes.length > 0 && selected.size === nodes.length;
+
   return (
     <section className="mt-5 pb-10">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-zinc-100">
           Chapters {list && list.totalCount > 0 && <span className="text-zinc-600">· {list.totalCount}</span>}
         </h2>
-        <button
-          onClick={() => setDesc((v) => !v)}
-          className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10"
-        >
-          {desc ? 'View All' : 'Oldest first'}
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {selecting ? (
+            <>
+              <button
+                onClick={() => (allSelected ? setSelected(new Set()) : setSelected(new Set(nodes.map((c) => c.id))))}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10"
+              >
+                {allSelected ? 'None' : 'All'}
+              </button>
+              <button
+                onClick={exitSelection}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              {nodes.length > 0 && (
+                <button
+                  onClick={() => setSelecting(true)}
+                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10"
+                >
+                  Select
+                </button>
+              )}
+              <button
+                onClick={() => setDesc((v) => !v)}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10"
+              >
+                {desc ? 'View All' : 'Oldest first'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {error && <ErrorState message={`Failed to load chapters: ${error.message}`} />}
 
       {nodes.length > 0 && (
         <ul className="space-y-2">
-          {nodes.map((chapter) => (
+          {nodes.map((chapter, index) => (
             <li key={chapter.id}>
-              <Link
-                to={`/manga/${mangaId}/chapter/${chapter.id}`}
-                className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-surface p-2 transition-colors hover:bg-white/5 active:bg-white/10"
-              >
-                <div className="h-14 w-11 shrink-0 overflow-hidden rounded-md bg-zinc-800">
-                  {thumbnailUrl && <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className={`truncate text-sm ${chapter.isRead ? 'text-zinc-500' : 'text-zinc-100'}`}>
-                    {chapterLabel(chapter.name, chapter.chapterNumber)}
-                  </p>
-                  <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-zinc-500">
-                    {formatEpochMs(chapter.uploadDate) && <span>{formatEpochMs(chapter.uploadDate)}</span>}
-                    {chapter.scanlator && <span className="truncate">· {chapter.scanlator}</span>}
-                    {chapter.pageCount > 0 && <span>· {chapter.pageCount}p</span>}
-                    {!chapter.isRead && chapter.lastPageRead > 0 && (
-                      <span className="text-brand-400">· resume p{chapter.lastPageRead + 1}</span>
-                    )}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {chapter.isBookmarked && <BookmarkIcon className="h-4 w-4 text-amber-400" />}
-                  <ChevronLeftIcon className="h-5 w-5 rotate-180 text-zinc-600" />
-                </div>
-              </Link>
+              <ChapterRow
+                mangaId={mangaId}
+                chapter={chapter}
+                thumbnailUrl={thumbnailUrl}
+                selecting={selecting}
+                checked={selected.has(chapter.id)}
+                onLongPress={() => beginSelection(chapter.id, index)}
+                onToggle={(extend) => toggle(chapter.id, index, extend)}
+              />
             </li>
           ))}
         </ul>
@@ -314,7 +399,189 @@ function ChapterList({
       {list?.pageInfo.hasNextPage && (
         <LoadMoreButton onClick={() => setLimit((l) => l + CHAPTER_PAGE)} loading={fetching} />
       )}
+
+      {selecting && (
+        <div className="pb-safe fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-glass/95 px-4 py-3 backdrop-blur-xl">
+          {selected.size === 1 && (
+            <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2">
+              <span className="shrink-0 text-xs text-zinc-500">Also select</span>
+              <button
+                onClick={() => extendBy('earlier')}
+                disabled={busy}
+                title="Every chapter earlier in the series"
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10 disabled:opacity-40"
+              >
+                Earlier chapters
+              </button>
+              <button
+                onClick={() => extendBy('later')}
+                disabled={busy}
+                title="Every chapter later in the series"
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10 disabled:opacity-40"
+              >
+                Later chapters
+              </button>
+            </div>
+          )}
+          {truncated && (
+            <p className="mx-auto mb-2 max-w-3xl text-xs text-amber-300">
+              The server returned fewer chapters than it reported — the range may be incomplete.
+            </p>
+          )}
+          <div className="mx-auto flex max-w-3xl items-center gap-2">
+            <span className="shrink-0 text-sm font-medium text-zinc-300">
+              {selected.size} selected
+            </span>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {busy && <Spinner className="h-4 w-4" />}
+              <button
+                onClick={() => markSelected(true)}
+                disabled={selected.size === 0 || busy}
+                className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-on-brand disabled:opacity-40"
+              >
+                Mark read
+              </button>
+              <button
+                onClick={() => markSelected(false)}
+                disabled={selected.size === 0 || busy}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-200 disabled:opacity-40"
+              >
+                Mark unread
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+const LONG_PRESS_MS = 450;
+
+function ChapterRow({
+  mangaId,
+  chapter,
+  thumbnailUrl,
+  selecting,
+  checked,
+  onLongPress,
+  onToggle,
+}: {
+  mangaId: number;
+  chapter: {
+    id: number;
+    name: string;
+    chapterNumber: number;
+    isRead: boolean;
+    isBookmarked: boolean;
+    pageCount: number;
+    scanlator?: string | null;
+    uploadDate: string;
+    lastPageRead: number;
+  };
+  thumbnailUrl?: string | null;
+  selecting: boolean;
+  checked: boolean;
+  onLongPress: () => void;
+  onToggle: (extend: boolean) => void;
+}) {
+  const timer = useRef<number | null>(null);
+  const fired = useRef(false);
+
+  function clear() {
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }
+
+  function onPointerDown() {
+    if (selecting) return;
+    fired.current = false;
+    clear();
+    timer.current = window.setTimeout(() => {
+      fired.current = true;
+      onLongPress();
+    }, LONG_PRESS_MS);
+  }
+
+  useEffect(() => clear, []);
+
+  const body = (
+    <>
+      <div className="h-14 w-11 shrink-0 overflow-hidden rounded-md bg-zinc-800">
+        {thumbnailUrl && <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-sm ${chapter.isRead ? 'text-zinc-500' : 'text-zinc-100'}`}>
+          {chapterLabel(chapter.name, chapter.chapterNumber)}
+        </p>
+        <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-zinc-500">
+          {formatEpochMs(chapter.uploadDate) && <span>{formatEpochMs(chapter.uploadDate)}</span>}
+          {chapter.scanlator && <span className="truncate">· {chapter.scanlator}</span>}
+          {chapter.pageCount > 0 && <span>· {chapter.pageCount}p</span>}
+          {!chapter.isRead && chapter.lastPageRead > 0 && (
+            <span className="text-brand-400">· resume p{chapter.lastPageRead + 1}</span>
+          )}
+        </p>
+      </div>
+    </>
+  );
+
+  const shell = `flex w-full items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
+    checked
+      ? 'border-brand-500/50 bg-brand-500/10'
+      : 'border-white/[0.07] bg-surface hover:bg-white/5 active:bg-white/10'
+  }`;
+
+  if (selecting) {
+    return (
+      <button
+        type="button"
+        onClick={(event) => onToggle(event.shiftKey)}
+        aria-pressed={checked}
+        className={shell}
+      >
+        <Checkbox checked={checked} />
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      to={`/manga/${mangaId}/chapter/${chapter.id}`}
+      onPointerDown={onPointerDown}
+      onPointerUp={clear}
+      onPointerLeave={clear}
+      onPointerCancel={clear}
+      onContextMenu={(event) => event.preventDefault()}
+      onClick={(event) => {
+        if (fired.current) {
+          event.preventDefault();
+          fired.current = false;
+        }
+      }}
+      className={shell}
+    >
+      {body}
+      <div className="flex shrink-0 items-center gap-2">
+        {chapter.isBookmarked && <BookmarkIcon className="h-4 w-4 text-amber-400" />}
+        <ChevronLeftIcon className="h-5 w-5 rotate-180 text-zinc-600" />
+      </div>
+    </Link>
+  );
+}
+
+function Checkbox({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${
+        checked ? 'border-brand-400 bg-brand-500' : 'border-white/20 bg-white/5'
+      }`}
+    >
+      {checked && <CheckIcon className="h-3.5 w-3.5 text-on-brand" />}
+    </span>
   );
 }
 

@@ -13,8 +13,8 @@ export default defineConfig({
       injectRegister: 'auto',
       includeAssets: ['icons/apple-touch-icon.png', 'icons/icon.svg'],
       manifest: {
-        name: 'Suwayomi',
-        short_name: 'Suwayomi',
+        name: 'Neyomi',
+        short_name: 'Neyomi',
         description: 'A focused, responsive interface for your Suwayomi manga library.',
         theme_color: '#050403',
         background_color: '#050403',

@@ -55,7 +55,7 @@ export function Settings() {
             <BrandMark className="h-10 w-10" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-lg font-bold">Suwayomi</h1>
+            <h1 className="text-lg font-bold">Neyomi</h1>
             <p className="mt-0.5 text-sm text-zinc-500">Connected to your Suwayomi server</p>
           </div>
         </section>

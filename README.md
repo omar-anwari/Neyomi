@@ -1,6 +1,6 @@
-# Suwayomi UI Revamp
+# Neyomi
 
-A custom web interface I made for [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server) cause I didn't like how the original looked, it's a mobile-first, fully themeable replacement for the stock WebUI, built on the server's GraphQL API.
+Neyomi is a custom web interface I made for [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server) cause I didn't like how the original looked, it's a mobile-first, fully themeable replacement for the stock WebUI, built on the server's GraphQL API.
 
 React 19 · TypeScript · Vite · Tailwind CSS v4 · urql · JWT auth · installable PWA
 
