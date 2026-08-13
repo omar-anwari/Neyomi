@@ -56,6 +56,7 @@ export const SourceInfoQuery = graphql(`
       id
       displayName
       supportsLatest
+      isConfigurable
     }
   }
 `);
@@ -66,8 +67,11 @@ export const BrowseSourceMutation = graphql(`
     $type: FetchSourceMangaType!
     $page: Int!
     $query: String
+    $filters: [FilterChangeInput!]
   ) {
-    fetchSourceManga(input: { source: $source, type: $type, page: $page, query: $query }) {
+    fetchSourceManga(
+      input: { source: $source, type: $type, page: $page, query: $query, filters: $filters }
+    ) {
       hasNextPage
       mangas {
         id
@@ -511,6 +515,309 @@ export const UpdateServerSettingsMutation = graphql(`
         syncDataTracking
 
         debugLogsEnabled
+      }
+    }
+  }
+`);
+
+export const CategoriesQuery = graphql(`
+  query Categories {
+    categories(order: [{ by: ORDER }]) {
+      nodes {
+        id
+        name
+        order
+        default
+        includeInUpdate
+        includeInDownload
+        mangas {
+          totalCount
+        }
+      }
+    }
+  }
+`);
+
+export const CreateCategoryMutation = graphql(`
+  mutation CreateCategory($name: String!) {
+    createCategory(input: { name: $name }) {
+      category {
+        id
+        name
+        order
+      }
+    }
+  }
+`);
+
+export const UpdateCategoryMutation = graphql(`
+  mutation UpdateCategory($id: Int!, $patch: UpdateCategoryPatchInput!) {
+    updateCategory(input: { id: $id, patch: $patch }) {
+      category {
+        id
+        name
+        default
+        includeInUpdate
+        includeInDownload
+      }
+    }
+  }
+`);
+
+export const DeleteCategoryMutation = graphql(`
+  mutation DeleteCategory($categoryId: Int!) {
+    deleteCategory(input: { categoryId: $categoryId }) {
+      category {
+        id
+      }
+    }
+  }
+`);
+
+export const UpdateCategoryOrderMutation = graphql(`
+  mutation UpdateCategoryOrder($id: Int!, $position: Int!) {
+    updateCategoryOrder(input: { id: $id, position: $position }) {
+      categories {
+        id
+        order
+      }
+    }
+  }
+`);
+
+export const UpdateMangaCategoriesMutation = graphql(`
+  mutation UpdateMangaCategories($id: Int!, $patch: UpdateMangaCategoriesPatchInput!) {
+    updateMangaCategories(input: { id: $id, patch: $patch }) {
+      manga {
+        id
+        categories {
+          nodes {
+            id
+            name
+          }
+        }
+      }
+    }
+  }
+`);
+
+export const ExtensionsQuery = graphql(`
+  query Extensions {
+    extensions(order: [{ by: NAME }]) {
+      nodes {
+        pkgName
+        name
+        lang
+        versionName
+        iconUrl
+        isInstalled
+        hasUpdate
+        isObsolete
+        contentWarning
+        storeIndexUrl
+        source {
+          nodes {
+            id
+            displayName
+            isConfigurable
+          }
+        }
+      }
+    }
+  }
+`);
+
+export const FetchExtensionsMutation = graphql(`
+  mutation FetchExtensions {
+    fetchExtensions(input: {}) {
+      extensions {
+        pkgName
+        hasUpdate
+        isInstalled
+      }
+    }
+  }
+`);
+
+export const UpdateExtensionMutation = graphql(`
+  mutation UpdateExtension($id: String!, $patch: UpdateExtensionPatchInput!) {
+    updateExtension(input: { id: $id, patch: $patch }) {
+      extension {
+        pkgName
+        isInstalled
+        hasUpdate
+        versionName
+      }
+    }
+  }
+`);
+
+export const ExtensionStoresQuery = graphql(`
+  query ExtensionStores {
+    extensionStores {
+      nodes {
+        indexUrl
+        name
+        badgeLabel
+        contactWebsite
+        isLegacy
+      }
+    }
+  }
+`);
+
+export const AddExtensionStoreMutation = graphql(`
+  mutation AddExtensionStore($indexUrl: String!) {
+    addExtensionStore(input: { indexUrl: $indexUrl }) {
+      extensionStore {
+        indexUrl
+        name
+      }
+    }
+  }
+`);
+
+export const RemoveExtensionStoreMutation = graphql(`
+  mutation RemoveExtensionStore($indexUrl: String!) {
+    removeExtensionStore(input: { indexUrl: $indexUrl }) {
+      extensionStore {
+        indexUrl
+      }
+    }
+  }
+`);
+
+export const SourceFiltersQuery = graphql(`
+  query SourceFilters($id: LongString!) {
+    source(id: $id) {
+      id
+      displayName
+      filters {
+        ...FilterFields
+        ... on GroupFilter {
+          name
+          filters {
+            ...FilterFields
+          }
+        }
+      }
+    }
+  }
+
+  fragment FilterFields on Filter {
+    __typename
+    ... on CheckBoxFilter {
+      name
+      checkBoxDefault: default
+    }
+    ... on TriStateFilter {
+      name
+      triStateDefault: default
+    }
+    ... on TextFilter {
+      name
+      textDefault: default
+    }
+    ... on SelectFilter {
+      name
+      values
+      selectDefault: default
+    }
+    ... on SortFilter {
+      name
+      values
+      sortDefault: default {
+        index
+        ascending
+      }
+    }
+    ... on HeaderFilter {
+      name
+    }
+    ... on SeparatorFilter {
+      name
+    }
+  }
+`);
+
+export const SourcePreferencesQuery = graphql(`
+  query SourcePreferences($id: LongString!) {
+    source(id: $id) {
+      id
+      displayName
+      isConfigurable
+      preferences {
+        ...PreferenceFields
+      }
+    }
+  }
+
+  fragment PreferenceFields on Preference {
+    __typename
+    ... on CheckBoxPreference {
+      key
+      title
+      summary
+      enabled
+      visible
+      checkBoxCurrent: currentValue
+      checkBoxDefault: default
+    }
+    ... on SwitchPreference {
+      key
+      title
+      summary
+      enabled
+      visible
+      switchCurrent: currentValue
+      switchDefault: default
+    }
+    ... on EditTextPreference {
+      key
+      title
+      summary
+      enabled
+      visible
+      dialogTitle
+      dialogMessage
+      editTextCurrent: currentValue
+      editTextDefault: default
+    }
+    ... on ListPreference {
+      key
+      title
+      summary
+      enabled
+      visible
+      entries
+      entryValues
+      listCurrent: currentValue
+      listDefault: default
+    }
+    ... on MultiSelectListPreference {
+      key
+      title
+      summary
+      enabled
+      visible
+      dialogTitle
+      dialogMessage
+      entries
+      entryValues
+      multiSelectCurrent: currentValue
+      multiSelectDefault: default
+    }
+  }
+`);
+
+export const UpdateSourcePreferenceMutation = graphql(`
+  mutation UpdateSourcePreference($source: LongString!, $change: SourcePreferenceChangeInput!) {
+    updateSourcePreference(input: { source: $source, change: $change }) {
+      source {
+        id
+      }
+      preferences {
+        ...PreferenceFields
       }
     }
   }

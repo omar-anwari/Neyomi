@@ -12,6 +12,9 @@ import { BrowseSource } from './components/BrowseSource';
 import { GenreView } from './components/GenreView';
 import { ReaderSettings, ServerSettings, Settings } from './components/Settings';
 import { ThemeSettings } from './components/ThemeSettings';
+import { Categories } from './components/Categories';
+import { Extensions } from './components/Extensions';
+import { SourceSettings } from './components/SourceSettings';
 
 export default function App() {
   const isAuthenticated = useIsAuthenticated();
@@ -30,8 +33,11 @@ export default function App() {
           <Route path="/settings/server" element={<ServerSettings />} />
           <Route path="/settings/reader" element={<ReaderSettings />} />
           <Route path="/settings/appearance" element={<ThemeSettings />} />
+          <Route path="/settings/categories" element={<Categories />} />
+          <Route path="/settings/extensions" element={<Extensions />} />
         </Route>
         <Route path="/sources/:sourceId" element={<BrowseSource />} />
+        <Route path="/sources/:sourceId/settings" element={<SourceSettings />} />
         <Route path="/genre/:name" element={<GenreView />} />
         <Route path="/manga/:id" element={<MangaDetail />} />
         <Route path="/manga/:mangaId/chapter/:chapterId" element={<Reader />} />

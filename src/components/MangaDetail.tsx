@@ -20,7 +20,6 @@ import {
   HomeIcon,
   CompassIcon,
   LibraryIcon,
-  ShareIcon,
   StarIcon,
   UserIcon,
 } from './icons';
@@ -93,9 +92,6 @@ function MangaDetailView() {
             <ChevronLeftIcon className="h-6 w-6" />
           </button>
           <div className="flex items-center gap-1.5">
-            <button className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/30 text-white backdrop-blur" aria-label="Share">
-              <ShareIcon className="h-5 w-5" />
-            </button>
             {manga?.realUrl && (
               <a
                 href={manga.realUrl}

@@ -4,6 +4,8 @@ Neyomi is a custom web interface I made for [Suwayomi-Server](https://github.com
 
 React 19 · TypeScript · Vite · Tailwind CSS v4 · urql · JWT auth · installable PWA
 
+Named it that cause it means reading lying down, sort of like how tachiyomi means standing reading and suwayomi means sitting reading (big brain ting ahlie)
+
 If you find anything broken or you got some cool idea, lmk in issues
 
 ---

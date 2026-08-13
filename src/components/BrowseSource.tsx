@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from 'urql';
-import { SourceInfoQuery, BrowseSourceMutation } from '../operations';
+import { SourceInfoQuery, BrowseSourceMutation, SourceFiltersQuery } from '../operations';
 import { PageHeader, LoadMoreButton, EmptyState, ErrorState, Skeleton } from './ui';
-import { SearchIcon, BookmarkIcon } from './icons';
+import { SearchIcon, BookmarkIcon, SlidersIcon, SettingsIcon } from './icons';
 import { mangaStatusLabel } from '../format';
-import type { FetchSourceMangaType, MangaStatus } from '../gql/graphql';
+import type { FetchSourceMangaType, MangaStatus, FilterChangeInput } from '../gql/graphql';
+import { FilterSheet, buildFilterChanges, type AnyFilter, type FilterState } from './SourceFilters';
 
 type BrowseType = FetchSourceMangaType; // 'POPULAR' | 'LATEST' | 'SEARCH'
 
@@ -39,6 +40,18 @@ export function BrowseSource() {
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [{ data: filterData, error: filterError }] = useQuery({
+    query: SourceFiltersQuery,
+    variables: { id: source },
+    pause: !source,
+  });
+  const filters = (filterData?.source.filters ?? []) as unknown as AnyFilter[];
+
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<FilterState>({});
+  const [appliedFilters, setAppliedFilters] = useState<FilterChangeInput[]>([]);
+  const appliedCount = appliedFilters.length;
+
   const [, browse] = useMutation(BrowseSourceMutation);
   const reqIdRef = useRef(0);
 
@@ -52,6 +65,7 @@ export function BrowseSource() {
         type,
         page: nextPage,
         query: type === 'SEARCH' ? submittedQuery : undefined,
+        filters: type === 'SEARCH' && appliedFilters.length > 0 ? appliedFilters : undefined,
       });
       if (reqId !== reqIdRef.current) return;
       setFetching(false);
@@ -69,21 +83,33 @@ export function BrowseSource() {
         return [...base, ...payload.mangas.filter((m) => !seen.has(m.id))];
       });
     },
-    [browse, source, type, submittedQuery],
+    [browse, source, type, submittedQuery, appliedFilters],
   );
 
   useEffect(() => {
     if (!source) return;
-    if (type === 'SEARCH' && submittedQuery === '') return;
+    if (type === 'SEARCH' && submittedQuery === '' && appliedFilters.length === 0) return;
     setItems([]);
     loadPage(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, type, submittedQuery]);
+  }, [source, type, submittedQuery, appliedFilters]);
 
   function selectType(t: BrowseType) {
     setQueryInput('');
     setSubmittedQuery('');
+    if (t !== 'SEARCH') setAppliedFilters([]);
     setType(t);
+  }
+
+  function applyFilters() {
+    setAppliedFilters(buildFilterChanges(filters, draftFilters));
+    setSheetOpen(false);
+    setType('SEARCH');
+  }
+
+  function resetFilters() {
+    setDraftFilters({});
+    setAppliedFilters([]);
   }
 
   function onSearchSubmit(e: React.FormEvent) {
@@ -97,12 +123,28 @@ export function BrowseSource() {
     setSubmittedQuery(q);
   }
 
-  const isSearchPending = type === 'SEARCH' && submittedQuery === '';
+  const isSearchPending = type === 'SEARCH' && submittedQuery === '' && appliedCount === 0;
   const showEmpty = !fetching && items.length === 0 && !error && !isSearchPending;
 
   return (
     <div className="min-h-dvh">
-      <PageHeader title={info?.displayName ?? 'Discover'} subtitle="Browse & search" backTo="/sources">
+      <PageHeader
+        title={info?.displayName ?? 'Discover'}
+        subtitle="Browse & search"
+        backTo="/sources"
+        actions={
+          info?.isConfigurable ? (
+            <Link
+              to={`/sources/${encodeURIComponent(source)}/settings`}
+              aria-label="Source settings"
+              title="Source settings"
+              className="grid h-10 w-10 place-items-center rounded-full text-zinc-300 hover:bg-white/5"
+            >
+              <SettingsIcon className="h-5 w-5" />
+            </Link>
+          ) : undefined
+        }
+      >
         <div className="space-y-3 px-4 pb-3 sm:px-6">
           <form onSubmit={onSearchSubmit} className="relative">
             <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -131,12 +173,23 @@ export function BrowseSource() {
                 “{submittedQuery}”
               </Pill>
             )}
+            {filters.length > 0 && (
+              <Pill active={appliedCount > 0} onClick={() => setSheetOpen(true)}>
+                <span className="flex items-center gap-1.5">
+                  <SlidersIcon className="h-4 w-4" />
+                  {appliedCount > 0 ? `Filters · ${appliedCount}` : 'Filters'}
+                </span>
+              </Pill>
+            )}
           </div>
         </div>
       </PageHeader>
 
       <main className="px-4 py-4 sm:px-6 sm:py-6">
         {error && <ErrorState message={error} />}
+        {filterError && (
+          <ErrorState message={`Couldn't load this source's filters: ${filterError.message}`} />
+        )}
 
         {isSearchPending && (
           <EmptyState title="Search this source" hint="Type a title and press Enter." />
@@ -177,6 +230,18 @@ export function BrowseSource() {
 
         {hasNext && !fetching && <LoadMoreButton onClick={() => loadPage(page + 1, false)} />}
       </main>
+
+      {sheetOpen && (
+        <FilterSheet
+          filters={filters}
+          state={draftFilters}
+          onChange={setDraftFilters}
+          onApply={applyFilters}
+          onReset={resetFilters}
+          onClose={() => setSheetOpen(false)}
+          busy={fetching}
+        />
+      )}
     </div>
   );
 }

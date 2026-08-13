@@ -8,7 +8,7 @@ import {
   UpdateChapterProgressMutation,
 } from '../operations';
 import { loadPrefs, savePrefs, type FitMode, type ReadingMode } from '../readerPrefs';
-import { BookmarkIcon, ExternalLinkIcon, MoreVerticalIcon, SettingsIcon, ChevronLeftIcon } from './icons';
+import { ExternalLinkIcon, MoreVerticalIcon, SettingsIcon, ChevronLeftIcon } from './icons';
 import { sourceLinkLabel } from '../format';
 import { Spinner } from './ui';
 import { SIDE_ZONE, useWebtoonZoom, useZoomPan, type TapZone } from './zoomPan';
@@ -635,9 +635,6 @@ function Toolbar({
             <ExternalLinkIcon className="h-5.5 w-5.5" />
           </a>
         )}
-        <button className="grid h-10 w-10 place-items-center rounded-full text-zinc-300 hover:bg-white/10" title="Bookmark">
-          <BookmarkIcon className="h-5.5 w-5.5" />
-        </button>
         <button
           onClick={onToggleSettings}
           className={`grid h-10 w-10 place-items-center rounded-full ${

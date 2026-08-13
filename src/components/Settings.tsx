@@ -33,6 +33,8 @@ const destinations = [
   { label: 'Appearance', description: 'Themes, custom palettes, and colors', Icon: SparklesIcon, to: '/settings/appearance' },
   { label: 'Server Settings', description: 'Updates, backups, WebUI, network, sync, and logs', Icon: SettingsIcon, to: '/settings/server' },
   { label: 'Reader Settings', description: 'Reading mode, image fit, brightness, and progress', Icon: BookOpenIcon, to: '/settings/reader' },
+  { label: 'Categories', description: 'Group your library and control what updates', Icon: LibraryIcon, to: '/settings/categories' },
+  { label: 'Extensions', description: 'Install, update, and manage source repos', Icon: CompassIcon, to: '/settings/extensions' },
   { label: 'Library', description: 'Manage saved titles and reading history', Icon: LibraryIcon, to: '/library' },
   { label: 'Browse Sources', description: 'Search every installed source', Icon: CompassIcon, to: '/sources' },
 ];

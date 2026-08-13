@@ -4,7 +4,7 @@ import { useMutation, useQuery } from 'urql';
 import { BrowseSourceMutation, SourcesQuery } from '../operations';
 import type { MangaStatus } from '../gql/graphql';
 import { mangaStatusLabel } from '../format';
-import { BookmarkIcon, MoreVerticalIcon, SearchIcon, StarIcon } from './icons';
+import { BookmarkIcon, MoreVerticalIcon, SearchIcon, SlidersIcon, StarIcon } from './icons';
 import { EmptyState, ErrorState, PageHeader, Skeleton } from './ui';
 
 type ResultManga = {
@@ -163,15 +163,54 @@ export function SourcesList() {
                   ))}
                 </select>
               </label>
+              {sourceId !== 'all' && (
+                <Link
+                  to={`/sources/${encodeURIComponent(sourceId)}`}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-brand-500/40 bg-brand-500/15 px-4 py-2.5 text-sm font-semibold text-brand-300 transition-colors hover:bg-brand-500/25"
+                >
+                  <SlidersIcon className="h-4 w-4" />
+                  Browse this source
+                </Link>
+              )}
               <p className="mt-3 text-xs leading-5 text-zinc-500">
                 {term
                   ? searchingAll
                     ? `Searching ${sources.length} installed source${sources.length === 1 ? '' : 's'} automatically.`
                     : 'Searching the selected source automatically.'
                   : 'Start typing to search. Results update after a short pause.'}
+                {sourceId !== 'all' && ' Browse the source directly for its own filters and settings.'}
               </p>
             </div>
           </section>
+
+          <div className="min-w-0 space-y-6">
+          {sources.length > 0 && (
+            <section>
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <h2 className="text-lg font-semibold">Installed sources</h2>
+                <span className="text-xs text-zinc-500">{sources.length}</span>
+              </div>
+              <ul className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {sources.map((source) => (
+                  <li key={source.id} className="shrink-0">
+                    <Link
+                      to={`/sources/${encodeURIComponent(source.id)}`}
+                      className="flex w-24 flex-col items-center gap-2 rounded-xl border border-white/[0.07] bg-surface p-3 transition-colors hover:border-white/15 hover:bg-raised"
+                    >
+                      <span className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-zinc-800">
+                        {source.iconUrl && (
+                          <img src={source.iconUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+                        )}
+                      </span>
+                      <span className="w-full truncate text-center text-[11px] font-medium text-zinc-300">
+                        {source.displayName}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -204,6 +243,7 @@ export function SourcesList() {
               <EmptyState title="No global results" hint={`Nothing matched “${term}” in the selected sources.`} />
             )}
           </section>
+          </div>
         </div>
       </main>
     </div>
