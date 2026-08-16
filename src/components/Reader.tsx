@@ -6,8 +6,10 @@ import {
   NextChapterQuery,
   FetchChapterPagesMutation,
   UpdateChapterProgressMutation,
+  SetMangaMetaMutation,
 } from '../operations';
 import { loadPrefs, savePrefs, type FitMode, type ReadingMode } from '../readerPrefs';
+import { READING_MODE_META_KEY, isReadingMode } from '../readerPrefs';
 import { ExternalLinkIcon, MoreVerticalIcon, SettingsIcon, ChevronLeftIcon } from './icons';
 import { sourceLinkLabel } from '../format';
 import { Spinner } from './ui';
@@ -78,8 +80,11 @@ function ReaderView() {
 
   const [prefs, setPrefs] = useState(loadPrefs);
   const setFit = (fit: FitMode) => setPrefs((p) => ({ ...p, fit }));
-  const setMode = (mode: ReadingMode) => setPrefs((p) => ({ ...p, mode }));
   useEffect(() => savePrefs(prefs), [prefs]);
+
+  const [modeOverride, setModeOverride] = useState<ReadingMode | null>(null);
+  const [, setMangaMeta] = useMutation(SetMangaMetaMutation);
+  const mode = modeOverride ?? prefs.mode;
 
   const [uiVisible, setUiVisible] = useState(true);
   const toggleUi = useCallback(() => setUiVisible((v) => !v), []);
@@ -91,6 +96,21 @@ function ReaderView() {
     pause: !Number.isFinite(chapterId),
   });
   const chapter = chapterData?.chapter;
+  const metaMode = chapter?.manga.meta.find((entry) => entry.key === READING_MODE_META_KEY)?.value;
+
+  useEffect(() => {
+    setModeOverride(isReadingMode(metaMode) ? metaMode : null);
+  }, [metaMode, chapter?.manga.id]);
+
+  const setMode = useCallback(
+    (next: ReadingMode) => {
+      setModeOverride(next);
+      const id = chapter?.manga.id;
+      if (id == null) return;
+      void setMangaMeta({ mangaId: id, key: READING_MODE_META_KEY, value: next });
+    },
+    [chapter?.manga.id, setMangaMeta],
+  );
 
   const [{ data: nextData }] = useQuery({
     query: NextChapterQuery,
@@ -192,13 +212,13 @@ function ReaderView() {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
-      if (prefs.mode === 'webtoon') return;
+      if (mode === 'webtoon') return;
       switch (e.key) {
         case 'ArrowRight':
-          prefs.mode === 'rtl' ? goBackward() : goForward();
+          mode === 'rtl' ? goBackward() : goForward();
           break;
         case 'ArrowLeft':
-          prefs.mode === 'rtl' ? goForward() : goBackward();
+          mode === 'rtl' ? goForward() : goBackward();
           break;
         case ' ':
         case 'PageDown':
@@ -221,7 +241,7 @@ function ReaderView() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [prefs.mode, goForward, goBackward, exit, total]);
+  }, [mode, goForward, goBackward, exit, total]);
 
   const loadedCount = usePagePreloader(pages);
   const loadPct = total > 0 ? Math.round((loadedCount / total) * 100) : 0;
@@ -255,7 +275,7 @@ function ReaderView() {
             sourceUrl={chapter?.realUrl ?? chapter?.manga.realUrl ?? undefined}
             sourceName={chapter?.manga.source?.displayName}
             loadPct={total > 0 ? loadPct : undefined}
-            prefs={prefs}
+            prefs={{ ...prefs, mode }}
             onFit={setFit}
             onMode={setMode}
             onExit={exit}
@@ -288,7 +308,7 @@ function ReaderView() {
 
       {!loadError && !loading && total > 0 && (
         <div className="h-full" style={{ filter: `brightness(${prefs.brightness}%)` }}>
-          {prefs.mode === 'webtoon' ? (
+          {mode === 'webtoon' ? (
             <WebtoonViewer
               pages={pages}
               fit={prefs.fit}
@@ -305,7 +325,7 @@ function ReaderView() {
             <PagedViewer
               src={pages[currentPage]}
               fit={prefs.fit}
-              mode={prefs.mode}
+              mode={mode}
               onForward={goForward}
               onBackward={goBackward}
               onToggleUi={toggleUi}
@@ -314,7 +334,7 @@ function ReaderView() {
         </div>
       )}
 
-      {uiVisible && !loadError && !loading && total > 0 && prefs.mode !== 'webtoon' && (
+      {uiVisible && !loadError && !loading && total > 0 && mode !== 'webtoon' && (
         <div className="pb-safe absolute inset-x-0 bottom-0 z-40 border-t border-white/5 bg-black/70 backdrop-blur-xl">
           {prefs.showProgressBar && (
             <div className="px-5 pt-3">
@@ -355,7 +375,7 @@ function ReaderView() {
         </div>
       )}
 
-      {hintVisible && <TapZoneHint mode={prefs.mode} />}
+      {hintVisible && <TapZoneHint mode={mode} />}
     </div>
   );
 }

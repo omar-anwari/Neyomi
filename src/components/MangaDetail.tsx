@@ -20,6 +20,7 @@ import {
   HomeIcon,
   CompassIcon,
   LibraryIcon,
+  SparklesIcon,
   StarIcon,
   UserIcon,
 } from './icons';
@@ -584,6 +585,7 @@ function Checkbox({ checked }: { checked: boolean }) {
 function DetailBottomNav() {
   const items = [
     { to: '/', label: 'Home', Icon: HomeIcon },
+    { to: '/updates', label: 'Updates', Icon: SparklesIcon },
     { to: '/sources', label: 'Discover', Icon: CompassIcon },
     { to: '/library', label: 'Library', Icon: LibraryIcon },
     { to: '/settings', label: 'Profile', Icon: UserIcon },

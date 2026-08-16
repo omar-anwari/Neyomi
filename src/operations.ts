@@ -319,6 +319,21 @@ export const ReaderChapterQuery = graphql(`
         source {
           displayName
         }
+        meta {
+          key
+          value
+        }
+      }
+    }
+  }
+`);
+
+export const SetMangaMetaMutation = graphql(`
+  mutation SetMangaMeta($mangaId: Int!, $key: String!, $value: String!) {
+    setMangaMeta(input: { meta: { mangaId: $mangaId, key: $key, value: $value } }) {
+      meta {
+        key
+        value
       }
     }
   }

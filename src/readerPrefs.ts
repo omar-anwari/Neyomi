@@ -47,3 +47,9 @@ export function savePrefs(prefs: ReaderPrefs): void {
 export function resetPrefs(): void {
   localStorage.removeItem(KEY);
 }
+
+export const READING_MODE_META_KEY = 'neyomi.readingMode';
+
+export function isReadingMode(value: unknown): value is ReadingMode {
+  return value === 'ltr' || value === 'rtl' || value === 'webtoon';
+}
