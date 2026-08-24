@@ -138,8 +138,12 @@ export const LibraryFullQuery = graphql(`
         title
         thumbnailUrl
         unreadCount
+        inLibraryAt
         chapters {
           totalCount
+        }
+        latestUploadedChapter {
+          uploadDate
         }
         lastReadChapter {
           id
@@ -266,6 +270,10 @@ export const MangaDetailQuery = graphql(`
         displayName
         lang
       }
+      meta {
+        key
+        value
+      }
       firstUnreadChapter {
         id
         name
@@ -310,6 +318,7 @@ export const ReaderChapterQuery = graphql(`
       pageCount
       lastPageRead
       isRead
+      isBookmarked
       mangaId
       realUrl
       manga {
@@ -396,8 +405,13 @@ export const UpdateChaptersMutation = graphql(`
 `);
 
 export const MangaChaptersQuery = graphql(`
-  query MangaChapters($mangaId: Int!, $first: Int, $order: [ChapterOrderInput!]) {
-    chapters(condition: { mangaId: $mangaId }, order: $order, first: $first) {
+  query MangaChapters(
+    $mangaId: Int!
+    $first: Int
+    $order: [ChapterOrderInput!]
+    $filter: ChapterFilterInput
+  ) {
+    chapters(condition: { mangaId: $mangaId }, filter: $filter, order: $order, first: $first) {
       totalCount
       pageInfo {
         hasNextPage
@@ -833,6 +847,43 @@ export const UpdateSourcePreferenceMutation = graphql(`
       }
       preferences {
         ...PreferenceFields
+      }
+    }
+  }
+`);
+
+export const BookmarkedChaptersQuery = graphql(`
+  query BookmarkedChapters($first: Int) {
+    chapters(
+      filter: { isBookmarked: { equalTo: true } }
+      order: [{ by: LAST_READ_AT, byType: DESC }]
+      first: $first
+    ) {
+      totalCount
+      nodes {
+        id
+        name
+        chapterNumber
+        mangaId
+        isRead
+        lastPageRead
+        pageCount
+        manga {
+          id
+          title
+          thumbnailUrl
+        }
+      }
+    }
+  }
+`);
+
+export const UpdateChapterBookmarkMutation = graphql(`
+  mutation UpdateChapterBookmark($id: Int!, $isBookmarked: Boolean!) {
+    updateChapter(input: { id: $id, patch: { isBookmarked: $isBookmarked } }) {
+      chapter {
+        id
+        isBookmarked
       }
     }
   }

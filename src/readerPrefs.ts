@@ -50,6 +50,8 @@ export function resetPrefs(): void {
 
 export const READING_MODE_META_KEY = 'neyomi.readingMode';
 
+export const CHAPTER_SORT_META_KEY = 'neyomi.chapterSort';
+
 export function isReadingMode(value: unknown): value is ReadingMode {
   return value === 'ltr' || value === 'rtl' || value === 'webtoon';
 }

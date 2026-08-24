@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from 'urql';
 import {
   ReaderChapterQuery,
@@ -7,10 +7,11 @@ import {
   FetchChapterPagesMutation,
   UpdateChapterProgressMutation,
   SetMangaMetaMutation,
+  UpdateChapterBookmarkMutation,
 } from '../operations';
 import { loadPrefs, savePrefs, type FitMode, type ReadingMode } from '../readerPrefs';
 import { READING_MODE_META_KEY, isReadingMode } from '../readerPrefs';
-import { ExternalLinkIcon, MoreVerticalIcon, SettingsIcon, ChevronLeftIcon } from './icons';
+import { BookmarkIcon, ExternalLinkIcon, MoreVerticalIcon, SettingsIcon, ChevronLeftIcon } from './icons';
 import { sourceLinkLabel } from '../format';
 import { Spinner } from './ui';
 import { SIDE_ZONE, useWebtoonZoom, useZoomPan, type TapZone } from './zoomPan';
@@ -77,6 +78,8 @@ function ReaderView() {
   const { mangaId, chapterId: chapterIdParam } = useParams();
   const chapterId = Number(chapterIdParam);
   const navigate = useNavigate();
+  const location = useLocation();
+  const arrivedAtEnd = (location.state as { atEnd?: boolean } | null)?.atEnd === true;
 
   const [prefs, setPrefs] = useState(loadPrefs);
   const setFit = (fit: FitMode) => setPrefs((p) => ({ ...p, fit }));
@@ -84,6 +87,8 @@ function ReaderView() {
 
   const [modeOverride, setModeOverride] = useState<ReadingMode | null>(null);
   const [, setMangaMeta] = useMutation(SetMangaMetaMutation);
+  const [, setChapterBookmark] = useMutation(UpdateChapterBookmarkMutation);
+  const [bookmarked, setBookmarked] = useState<boolean | null>(null);
   const mode = modeOverride ?? prefs.mode;
 
   const [uiVisible, setUiVisible] = useState(true);
@@ -101,6 +106,17 @@ function ReaderView() {
   useEffect(() => {
     setModeOverride(isReadingMode(metaMode) ? metaMode : null);
   }, [metaMode, chapter?.manga.id]);
+
+  useEffect(() => {
+    setBookmarked(chapter?.isBookmarked ?? null);
+  }, [chapter?.id, chapter?.isBookmarked]);
+
+  const toggleBookmark = useCallback(() => {
+    if (!chapter) return;
+    const next = !(bookmarked ?? chapter.isBookmarked);
+    setBookmarked(next);
+    void setChapterBookmark({ id: chapter.id, isBookmarked: next });
+  }, [chapter, bookmarked, setChapterBookmark]);
 
   const setMode = useCallback(
     (next: ReadingMode) => {
@@ -122,10 +138,23 @@ function ReaderView() {
   });
   const nextChapter = nextData?.chapters.nodes[0] ?? null;
 
+  const [{ data: prevData }] = useQuery({
+    query: NextChapterQuery,
+    variables: {
+      mangaId: chapter?.mangaId ?? 0,
+      sourceOrder: (chapter?.sourceOrder ?? 0) - 1,
+    },
+    pause: !chapter || chapter.sourceOrder <= 0,
+  });
+  const prevChapter = prevData?.chapters.nodes[0] ?? null;
+
   const [, fetchPages] = useMutation(FetchChapterPagesMutation);
   const [pages, setPages] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [refreshKey, setrefreshKey] = useState(0);
+  const retryPages = useCallback(() => setrefreshKey((n) => n + 1), []);
 
   useEffect(() => {
     if (!Number.isFinite(chapterId)) return;
@@ -142,16 +171,21 @@ function ReaderView() {
     return () => {
       cancelled = true;
     };
-  }, [chapterId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapterId, refreshKey]);
 
   const [currentPage, setCurrentPage] = useState(0);
   const initialisedRef = useRef(false);
   useEffect(() => {
     if (initialisedRef.current || !chapter || pages.length === 0) return;
     initialisedRef.current = true;
-    const savedPage = prefs.rememberLastChapter ? chapter.lastPageRead : 0;
+    const savedPage = arrivedAtEnd
+      ? pages.length - 1
+      : prefs.rememberLastChapter
+        ? chapter.lastPageRead
+        : 0;
     setCurrentPage(Math.min(Math.max(savedPage, 0), pages.length - 1));
-  }, [chapter, pages.length, prefs.rememberLastChapter]);
+  }, [chapter, pages.length, prefs.rememberLastChapter, arrivedAtEnd]);
 
   const [, updateProgress] = useMutation(UpdateChapterProgressMutation);
   const lastSentRef = useRef<number>(-1);
@@ -199,7 +233,21 @@ function ReaderView() {
     if (currentPageRef.current >= total) goNextChapter();
     else setCurrentPage((p) => Math.min(p + 1, total));
   }, [total, goNextChapter]);
-  const goBackward = useCallback(() => setCurrentPage((p) => Math.max(p - 1, 0)), []);
+  const goPrevChapter = useCallback(() => {
+    if (!prevChapter || !chapter) return;
+    navigate(`/manga/${chapter.mangaId}/chapter/${prevChapter.id}`, {
+      replace: true,
+      state: { atEnd: true },
+    });
+  }, [prevChapter, chapter, navigate]);
+
+  const goBackward = useCallback(() => {
+    if (currentPageRef.current <= 0) {
+      goPrevChapter();
+      return;
+    }
+    setCurrentPage((p) => Math.max(p - 1, 0));
+  }, [goPrevChapter]);
   const exit = useCallback(() => {
     if (window.history.length > 1) navigate(-1);
     else navigate(`/manga/${mangaId}`, { replace: true });
@@ -274,6 +322,8 @@ function ReaderView() {
             subtitle={prefs.showChapterSubtitle ? chapter?.name : undefined}
             sourceUrl={chapter?.realUrl ?? chapter?.manga.realUrl ?? undefined}
             sourceName={chapter?.manga.source?.displayName}
+            bookmarked={bookmarked ?? chapter?.isBookmarked ?? false}
+            onToggleBookmark={toggleBookmark}
             loadPct={total > 0 ? loadPct : undefined}
             prefs={{ ...prefs, mode }}
             onFit={setFit}
@@ -294,8 +344,22 @@ function ReaderView() {
       )}
 
       {loadError && (
-        <div className="flex h-full items-center justify-center px-6 text-center text-sm text-red-400">
-          Failed to load pages: {loadError}
+        <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="max-w-sm text-sm text-red-400">Failed to load pages: {loadError}</p>
+          <div className="flex gap-2">
+            <button
+              onClick={retryPages}
+              className="rounded-full bg-brand-500 px-5 py-2.5 text-sm font-semibold text-on-brand"
+            >
+              Try again
+            </button>
+            <button
+              onClick={toDetail}
+              className="rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-medium text-zinc-200"
+            >
+              Back to chapters
+            </button>
+          </div>
         </div>
       )}
 
@@ -354,9 +418,16 @@ function ReaderView() {
             </div>
           )}
           <div className="grid grid-cols-3 pb-1 pt-3">
-            <button onClick={goBackward} className="flex flex-col items-center gap-1 py-1 text-zinc-300 transition-colors hover:text-white">
+            <button
+              onClick={goBackward}
+              disabled={currentPage <= 0 && !prevChapter}
+              title={currentPage <= 0 && prevChapter ? 'Previous chapter' : 'Previous page'}
+              className="flex flex-col items-center gap-1 py-1 text-zinc-300 transition-colors hover:text-white disabled:opacity-30"
+            >
               <ChevronLeftIcon className="h-6 w-6" />
-              <span className="text-[11px] font-medium">Previous</span>
+              <span className="text-[11px] font-medium">
+                {currentPage <= 0 && prevChapter ? 'Prev chapter' : 'Previous'}
+              </span>
             </button>
             <button
               onClick={() => setSettingsOpen((v) => !v)}
@@ -604,6 +675,8 @@ function Toolbar({
   subtitle,
   sourceUrl,
   sourceName,
+  bookmarked,
+  onToggleBookmark,
   loadPct,
   prefs,
   onFit,
@@ -616,6 +689,8 @@ function Toolbar({
   subtitle?: string;
   sourceUrl?: string;
   sourceName?: string | null;
+  bookmarked: boolean;
+  onToggleBookmark: () => void;
   loadPct?: number;
   prefs: { fit: FitMode; mode: ReadingMode };
   onFit: (f: FitMode) => void;
@@ -655,6 +730,17 @@ function Toolbar({
             <ExternalLinkIcon className="h-5.5 w-5.5" />
           </a>
         )}
+        <button
+          onClick={onToggleBookmark}
+          aria-pressed={bookmarked}
+          aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this chapter'}
+          title={bookmarked ? 'Remove bookmark' : 'Bookmark this chapter'}
+          className={`grid h-10 w-10 place-items-center rounded-full transition-colors ${
+            bookmarked ? 'text-amber-400 hover:bg-white/10' : 'text-zinc-300 hover:bg-white/10'
+          }`}
+        >
+          <BookmarkIcon className="h-5.5 w-5.5" />
+        </button>
         <button
           onClick={onToggleSettings}
           className={`grid h-10 w-10 place-items-center rounded-full ${

@@ -7,9 +7,11 @@ import {
   UpdateMangaLibraryMutation,
   UpdateChaptersMutation,
   ChapterIdRangeQuery,
+  SetMangaMetaMutation,
   FetchMangaAndChaptersMutation,
 } from '../operations';
 import { mangaStatusLabel, formatEpochMs, chapterLabel } from '../format';
+import { CHAPTER_SORT_META_KEY } from '../readerPrefs';
 import { Chip, Skeleton, LoadMoreButton, ErrorState, Spinner } from './ui';
 import {
   BookOpenIcon,
@@ -198,7 +200,14 @@ function MangaDetailView() {
               </div>
             )}
 
-            <ChapterList mangaId={mangaId} initializing={initializing} thumbnailUrl={manga.thumbnailUrl} />
+            <ChapterList
+              mangaId={mangaId}
+              initializing={initializing}
+              thumbnailUrl={manga.thumbnailUrl}
+              storedDesc={
+                manga.meta.find((entry) => entry.key === CHAPTER_SORT_META_KEY)?.value !== 'asc'
+              }
+            />
           </>
         )}
         </div>
@@ -226,13 +235,28 @@ function ChapterList({
   mangaId,
   initializing,
   thumbnailUrl,
+  storedDesc,
 }: {
   mangaId: number;
   initializing: boolean;
   thumbnailUrl?: string | null;
+  storedDesc: boolean;
 }) {
   const [limit, setLimit] = useState(CHAPTER_PAGE);
-  const [desc, setDesc] = useState(true);
+  const [desc, setDesc] = useState(storedDesc);
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [, setMangaMeta] = useMutation(SetMangaMetaMutation);
+
+  function toggleSort() {
+    const next = !desc;
+    setDesc(next);
+    void setMangaMeta({
+      mangaId,
+      key: CHAPTER_SORT_META_KEY,
+      value: next ? 'desc' : 'asc',
+    });
+  }
+
   const context = useMemo(() => ({ additionalTypenames: ['ChapterType'] }), []);
   const [{ data, fetching, error }] = useQuery({
     query: MangaChaptersQuery,
@@ -240,6 +264,7 @@ function ChapterList({
       mangaId,
       first: limit,
       order: [{ by: 'SOURCE_ORDER', byType: desc ? 'DESC' : 'ASC' }],
+      filter: unreadOnly ? { isRead: { equalTo: false } } : undefined,
     },
     context,
   });
@@ -349,10 +374,22 @@ function ChapterList({
                 </button>
               )}
               <button
-                onClick={() => setDesc((v) => !v)}
+                onClick={() => setUnreadOnly((v) => !v)}
+                title={unreadOnly ? 'Showing unread only' : 'Show every chapter'}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  unreadOnly
+                    ? 'border-brand-500/40 bg-brand-500/15 text-brand-300'
+                    : 'border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10'
+                }`}
+              >
+                Unread
+              </button>
+              <button
+                onClick={toggleSort}
+                title={desc ? 'Newest first' : 'Oldest first'}
                 className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/10"
               >
-                {desc ? 'View All' : 'Oldest first'}
+                {desc ? 'Newest' : 'Oldest'}
               </button>
             </>
           )}
