@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from 'urql';
 import {
@@ -69,6 +69,18 @@ function usePagePreloader(pages: string[]): number {
   return loaded;
 }
 
+const DARK_QUERY = '(prefers-color-scheme: dark)';
+
+function subscribeColorScheme(onChange: () => void): () => void {
+  const query = window.matchMedia(DARK_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+function useSystemPrefersDark(): boolean {
+  return useSyncExternalStore(subscribeColorScheme, () => window.matchMedia(DARK_QUERY).matches);
+}
+
 export function Reader() {
   const { chapterId } = useParams();
   return <ReaderView key={chapterId} />;
@@ -84,6 +96,8 @@ function ReaderView() {
   const [prefs, setPrefs] = useState(loadPrefs);
   const setFit = (fit: FitMode) => setPrefs((p) => ({ ...p, fit }));
   useEffect(() => savePrefs(prefs), [prefs]);
+  const systemDark = useSystemPrefersDark();
+  const light = prefs.theme === 'light' || (prefs.theme === 'system' && !systemDark);
 
   const [modeOverride, setModeOverride] = useState<ReadingMode | null>(null);
   const [, setMangaMeta] = useMutation(SetMangaMetaMutation);
@@ -175,7 +189,9 @@ function ReaderView() {
   }, [chapterId, refreshKey]);
 
   const [currentPage, setCurrentPage] = useState(0);
+  const [started, setStarted] = useState(false);
   const initialisedRef = useRef(false);
+  const lastSentRef = useRef<number>(-1);
   useEffect(() => {
     if (initialisedRef.current || !chapter || pages.length === 0) return;
     initialisedRef.current = true;
@@ -184,11 +200,14 @@ function ReaderView() {
       : prefs.rememberLastChapter
         ? chapter.lastPageRead
         : 0;
-    setCurrentPage(Math.min(Math.max(savedPage, 0), pages.length - 1));
+    const startPage = Math.min(Math.max(savedPage, 0), pages.length - 1);
+    // Stepping back into a chapter opens it on its last page; that alone shouldn't mark it read.
+    if (arrivedAtEnd) lastSentRef.current = startPage;
+    setCurrentPage(startPage);
+    setStarted(true);
   }, [chapter, pages.length, prefs.rememberLastChapter, arrivedAtEnd]);
 
   const [, updateProgress] = useMutation(UpdateChapterProgressMutation);
-  const lastSentRef = useRef<number>(-1);
   const timerRef = useRef<number | undefined>(undefined);
   const currentPageRef = useRef(0);
   currentPageRef.current = currentPage;
@@ -307,12 +326,8 @@ function ReaderView() {
 
   return (
     <div
-      className={`relative h-[100dvh] w-screen overflow-hidden text-zinc-100 ${
-        prefs.theme === 'light'
-          ? 'bg-white'
-          : prefs.theme === 'system'
-            ? 'bg-white dark:bg-black'
-            : 'bg-black'
+      className={`relative h-[100dvh] w-screen overflow-hidden ${
+        light ? 'bg-white text-zinc-900' : 'bg-black text-zinc-100'
       }`}
     >
       {uiVisible && (
@@ -355,7 +370,9 @@ function ReaderView() {
             </button>
             <button
               onClick={toDetail}
-              className="rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-medium text-zinc-200"
+              className={`rounded-full border px-5 py-2.5 text-sm font-medium ${
+                light ? 'border-black/10 bg-black/5 text-zinc-700' : 'border-white/10 bg-white/5 text-zinc-200'
+              }`}
             >
               Back to chapters
             </button>
@@ -376,14 +393,14 @@ function ReaderView() {
             <WebtoonViewer
               pages={pages}
               fit={prefs.fit}
-              initialPage={currentPage}
+              initialPage={started ? currentPage : null}
               onPageChange={setCurrentPage}
               onToggleUi={toggleUi}
-              endPanel={<EndPanel next={nextChapter} onNext={goNextChapter} onExit={toDetail} />}
+              endPanel={<EndPanel next={nextChapter} onNext={goNextChapter} onExit={toDetail} light={light} />}
             />
           ) : currentPage >= total ? (
             <div className="flex h-full items-center justify-center">
-              <EndPanel next={nextChapter} onNext={goNextChapter} onExit={toDetail} />
+              <EndPanel next={nextChapter} onNext={goNextChapter} onExit={toDetail} light={light} />
             </div>
           ) : (
             <PagedViewer
@@ -566,46 +583,98 @@ function WebtoonViewer({
 }: {
   pages: string[];
   fit: FitMode;
-  initialPage: number;
+  initialPage: number | null;
   onPageChange: (page: number) => void;
   onToggleUi: () => void;
   endPanel: ReactNode;
 }) {
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const scrolledRef = useRef(false);
+  const settledRef = useRef(new Set<number>());
+  const restoreStartedRef = useRef(false);
+  const restoreTargetRef = useRef<number | null>(null);
   const { containerRef, containerProps, scale } = useWebtoonZoom({ onTap: onToggleUi });
+
+  // Pages have no height until they load, so keep re-scrolling to the saved page until everything above it has loaded.
+  const continueRestore = useCallback(() => {
+    const target = restoreTargetRef.current;
+    if (target == null) return;
+    pageRefs.current[target]?.scrollIntoView({ block: 'start' });
+    for (let i = 0; i <= target; i += 1) {
+      if (!settledRef.current.has(i)) return;
+    }
+    restoreTargetRef.current = null;
+  }, []);
+
+  const onPageSettled = useCallback(
+    (index: number) => {
+      settledRef.current.add(index);
+      continueRestore();
+    },
+    [continueRestore],
+  );
+
+  useEffect(() => {
+    if (restoreStartedRef.current || initialPage == null) return;
+    restoreStartedRef.current = true;
+    const target = Math.min(initialPage, pages.length - 1);
+    if (target <= 0) return;
+    restoreTargetRef.current = target;
+    continueRestore();
+  }, [initialPage, pages.length, continueRestore]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const ratios = new Map<number, number>();
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          const idx = Number((e.target as HTMLElement).dataset.index);
-          ratios.set(idx, e.intersectionRatio);
-        }
-        let best = -1;
-        let bestRatio = -1;
-        ratios.forEach((r, idx) => {
-          if (r > bestRatio) {
-            bestRatio = r;
-            best = idx;
-          }
-        });
-        if (best >= 0) onPageChange(best);
-      },
-      { root: container, threshold: [0.25, 0.5, 0.75] },
-    );
-    pageRefs.current.forEach((el) => el && io.observe(el));
-    return () => io.disconnect();
-  }, [pages.length, onPageChange]);
+    const cancelRestore = () => {
+      restoreTargetRef.current = null;
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.buttons !== 0) cancelRestore();
+    };
+    container.addEventListener('wheel', cancelRestore, { passive: true });
+    container.addEventListener('touchmove', cancelRestore, { passive: true });
+    container.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('keydown', cancelRestore);
+    return () => {
+      container.removeEventListener('wheel', cancelRestore);
+      container.removeEventListener('touchmove', cancelRestore);
+      container.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('keydown', cancelRestore);
+    };
+  }, [containerRef]);
 
   useEffect(() => {
-    if (scrolledRef.current || initialPage <= 0) return;
-    scrolledRef.current = true;
-    pageRefs.current[initialPage]?.scrollIntoView();
-  }, [initialPage]);
+    const container = containerRef.current;
+    if (!container) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      if (restoreTargetRef.current != null) return;
+      const atBottom =
+        container.scrollTop > 0 && container.scrollTop + container.clientHeight >= container.scrollHeight - 2;
+      let page = 0;
+      if (atBottom) {
+        page = pages.length - 1;
+      } else {
+        const edge = container.getBoundingClientRect().top + 2;
+        for (let i = 0; i < pages.length; i += 1) {
+          const el = pageRefs.current[i];
+          if (!el) continue;
+          if (el.getBoundingClientRect().top > edge) break;
+          page = i;
+        }
+      }
+      onPageChange(page);
+    };
+    const onScroll = () => {
+      if (!frame) frame = window.requestAnimationFrame(measure);
+    };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [containerRef, pages.length, onPageChange]);
 
   return (
     <div
@@ -620,7 +689,9 @@ function WebtoonViewer({
               <img
                 src={src}
                 alt=""
-                loading="lazy"
+                loading={i <= (initialPage ?? 0) ? 'eager' : 'lazy'}
+                onLoad={() => onPageSettled(i)}
+                onError={() => onPageSettled(i)}
                 className={`${fit === 'width' ? 'w-full' : FIT_CLASS[fit]} mx-auto select-none`}
                 draggable={false}
               />
@@ -637,10 +708,12 @@ function EndPanel({
   next,
   onNext,
   onExit,
+  light,
 }: {
   next: { name: string; chapterNumber: number } | null;
   onNext: () => void;
   onExit: () => void;
+  light: boolean;
 }) {
   return (
     <div
@@ -657,10 +730,14 @@ function EndPanel({
         </button>
       ) : (
         <>
-          <p className="text-zinc-300">You're all caught up.</p>
+          <p className={light ? 'text-zinc-700' : 'text-zinc-300'}>You're all caught up.</p>
           <button
             onClick={onExit}
-            className="rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm text-zinc-200 hover:bg-white/10"
+            className={`rounded-xl border px-6 py-3 text-sm ${
+              light
+                ? 'border-black/10 bg-black/5 text-zinc-700 hover:bg-black/10'
+                : 'border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10'
+            }`}
           >
             Back to details
           </button>

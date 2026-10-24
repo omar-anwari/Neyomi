@@ -46,7 +46,7 @@ export function Login() {
       return;
     }
     const payload = result.data?.login;
-    if (payload) setTokens({ accessToken: payload.accessToken, refreshToken: payload.refreshToken });
+    if (payload) setTokens({ accessToken: payload.accessToken, refreshToken: payload.refreshToken }, remember);
   }
 
   return (

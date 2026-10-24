@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useClient, useMutation, useQuery } from 'urql';
 import {
@@ -23,12 +23,14 @@ import {
   CompassIcon,
   LibraryIcon,
   SparklesIcon,
-  StarIcon,
   UserIcon,
 } from './icons';
 import { sourceLinkLabel } from '../format';
 
 const CHAPTER_PAGE = 100;
+const CHAPTER_CONTEXT = { additionalTypenames: ['ChapterType'] };
+const READ_BUTTON =
+  'brand-gradient flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold text-on-brand shadow-lg shadow-brand-500/30 transition hover:brightness-110';
 
 export function MangaDetail() {
   const { id } = useParams();
@@ -44,8 +46,17 @@ function MangaDetailView() {
     query: MangaDetailQuery,
     variables: { id: mangaId },
     pause: !Number.isFinite(mangaId),
+    context: CHAPTER_CONTEXT,
   });
   const manga = data?.manga;
+
+  const [{ data: firstChapterData }] = useQuery({
+    query: MangaChaptersQuery,
+    variables: { mangaId, first: 1, order: [{ by: 'SOURCE_ORDER', byType: 'ASC' }] },
+    pause: !manga || manga.firstUnreadChapter != null,
+    context: CHAPTER_CONTEXT,
+  });
+  const firstChapter = firstChapterData?.chapters.nodes[0];
 
   const [, fetchMangaChapters] = useMutation(FetchMangaAndChaptersMutation);
   const [initializing, setInitializing] = useState(false);
@@ -144,26 +155,24 @@ function MangaDetailView() {
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {manga.genre.slice(0, 3).map((genre) => <Chip key={genre}>{genre}</Chip>)}
                 </div>
-                <div className="mt-5 flex items-center gap-2">
-                  <StarIcon className="h-6 w-6 text-amber-400" />
-                  <span className="text-xl font-bold">Featured</span>
-                </div>
-                <p className="mt-2 text-xs text-zinc-500">{mangaStatusLabel(manga.status)} · {manga.source?.displayName}</p>
+                <p className="mt-5 text-xs text-zinc-500">{mangaStatusLabel(manga.status)} · {manga.source?.displayName}</p>
               </div>
             </div>
 
             <div className="mt-5">
               {manga.firstUnreadChapter ? (
-                <Link
-                  to={`/manga/${mangaId}/chapter/${manga.firstUnreadChapter.id}`}
-                  className="brand-gradient flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold text-on-brand shadow-lg shadow-brand-500/30 transition hover:brightness-110"
-                >
+                <Link to={`/manga/${mangaId}/chapter/${manga.firstUnreadChapter.id}`} className={READ_BUTTON}>
                   <BookOpenIcon className="h-5 w-5" />
-                  {manga.unreadCount > 0 ? 'Continue reading' : 'Read from start'}
+                  {manga.lastReadChapter ? 'Continue reading' : 'Start reading'}
+                </Link>
+              ) : firstChapter ? (
+                <Link to={`/manga/${mangaId}/chapter/${firstChapter.id}`} className={READ_BUTTON}>
+                  <BookOpenIcon className="h-5 w-5" />
+                  Read again
                 </Link>
               ) : (
                 <div className="flex w-full items-center justify-center rounded-xl bg-white/5 px-6 py-3.5 text-sm font-medium text-zinc-500">
-                  All caught up
+                  {firstChapterData && !initializing ? 'No chapters yet' : 'Loading chapters…'}
                 </div>
               )}
               <div className="mt-2 flex gap-2">
@@ -257,7 +266,6 @@ function ChapterList({
     });
   }
 
-  const context = useMemo(() => ({ additionalTypenames: ['ChapterType'] }), []);
   const [{ data, fetching, error }] = useQuery({
     query: MangaChaptersQuery,
     variables: {
@@ -266,7 +274,7 @@ function ChapterList({
       order: [{ by: 'SOURCE_ORDER', byType: desc ? 'DESC' : 'ASC' }],
       filter: unreadOnly ? { isRead: { equalTo: false } } : undefined,
     },
-    context,
+    context: CHAPTER_CONTEXT,
   });
   const list = data?.chapters;
   const nodes = list?.nodes ?? [];

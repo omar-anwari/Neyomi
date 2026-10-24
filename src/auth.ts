@@ -3,16 +3,29 @@ export type Tokens = { accessToken: string; refreshToken: string };
 const KEY = 'suwayomi-auth';
 const listeners = new Set<() => void>();
 
-function load(): Tokens | null {
+function storage(persistent: boolean): Storage | null {
   try {
-    const raw = localStorage.getItem(KEY);
+    return persistent ? window.localStorage : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function load(persistent: boolean): Tokens | null {
+  try {
+    const raw = storage(persistent)?.getItem(KEY);
     return raw ? (JSON.parse(raw) as Tokens) : null;
   } catch {
     return null;
   }
 }
 
-let current: Tokens | null = load();
+let current: Tokens | null = load(true);
+let persistent = true;
+if (!current) {
+  current = load(false);
+  persistent = current === null;
+}
 
 export function getTokens(): Tokens | null {
   return current;
@@ -32,10 +45,15 @@ function writeImageCookie(token: string | null): void {
   }
 }
 
-export function setTokens(tokens: Tokens | null): void {
+export function setTokens(tokens: Tokens | null, remember = persistent): void {
   current = tokens;
-  if (tokens) localStorage.setItem(KEY, JSON.stringify(tokens));
-  else localStorage.removeItem(KEY);
+  persistent = remember;
+  try {
+    storage(true)?.removeItem(KEY);
+    storage(false)?.removeItem(KEY);
+    if (tokens) storage(remember)?.setItem(KEY, JSON.stringify(tokens));
+  } catch {
+  }
   writeImageCookie(tokens?.accessToken ?? null);
   listeners.forEach((l) => l());
 }

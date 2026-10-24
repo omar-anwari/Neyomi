@@ -40,7 +40,7 @@ export const client = new Client({
         const accessToken = result.data?.refreshToken?.accessToken;
         if (accessToken) {
           setTokens({ accessToken, refreshToken: tokens.refreshToken });
-        } else {
+        } else if (!result.error?.networkError) {
           clearTokens();
         }
       },

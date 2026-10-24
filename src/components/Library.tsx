@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from 'urql';
 import { BookmarkedChaptersQuery, LibraryFullQuery } from '../operations';
@@ -18,6 +18,7 @@ import {
 
 const GRID = 'grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8';
 const num = (s?: string | null) => (s ? Number(s) : 0);
+const FIRST_PAGE = 500;
 
 type Tab = 'library' | 'bookmarks' | 'history';
 
@@ -26,7 +27,12 @@ export function Library() {
   const [sort, setSort] = useState(loadSort);
   const [sortOpen, setSortOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [{ data, fetching, error }] = useQuery({ query: LibraryFullQuery, variables: { first: 500 } });
+  const [first, setFirst] = useState(FIRST_PAGE);
+  const [{ data, fetching, error }] = useQuery({ query: LibraryFullQuery, variables: { first } });
+  const libraryTotal = data?.mangas.totalCount ?? 0;
+  useEffect(() => {
+    if (libraryTotal > first) setFirst(libraryTotal);
+  }, [libraryTotal, first]);
   const rawNodes = useMemo(() => data?.mangas.nodes ?? [], [data]);
   const nodes = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -150,8 +156,12 @@ export function Library() {
         {error && <ErrorState message={`Failed to load library: ${error.message}`} />}
         {!data && fetching && <CoverGridSkeleton />}
 
-        {data && nodes.length === 0 && (
+        {data && tab === 'library' && rawNodes.length === 0 && (
           <EmptyState title="Your library is empty" hint="Head to Browse to add manga from a source." />
+        )}
+
+        {data && tab === 'library' && rawNodes.length > 0 && nodes.length === 0 && (
+          <EmptyState title="No matches" hint={`Nothing in your library matches "${search.trim()}".`} />
         )}
 
         {data && nodes.length > 0 && tab === 'library' && (
@@ -283,11 +293,16 @@ function TabButton({
 
 function BookmarkedChapters({ search }: { search: string }) {
   const context = useMemo(() => ({ additionalTypenames: ['ChapterType'] }), []);
+  const [first, setFirst] = useState(FIRST_PAGE);
   const [{ data, fetching, error }] = useQuery({
     query: BookmarkedChaptersQuery,
-    variables: { first: 500 },
+    variables: { first },
     context,
   });
+  const total = data?.chapters.totalCount ?? 0;
+  useEffect(() => {
+    if (total > first) setFirst(total);
+  }, [total, first]);
 
   const term = search.trim().toLowerCase();
   const chapters = (data?.chapters.nodes ?? []).filter(
@@ -313,6 +328,9 @@ function BookmarkedChapters({ search }: { search: string }) {
 
   if (error) return <ErrorState message={`Failed to load bookmarks: ${error.message}`} />;
   if (fetching && chapters.length === 0) return <CoverGridSkeleton count={4} />;
+  if (grouped.length === 0 && term && (data?.chapters.nodes.length ?? 0) > 0) {
+    return <EmptyState title="No matches" hint={`No bookmarked chapters match "${search.trim()}".`} />;
+  }
   if (grouped.length === 0) {
     return (
       <EmptyState

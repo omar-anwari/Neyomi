@@ -279,6 +279,9 @@ export const MangaDetailQuery = graphql(`
         name
         chapterNumber
       }
+      lastReadChapter {
+        id
+      }
     }
   }
 `);
