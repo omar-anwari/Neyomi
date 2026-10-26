@@ -60,17 +60,16 @@ function MangaDetailView() {
 
   const [, fetchMangaChapters] = useMutation(FetchMangaAndChaptersMutation);
   const [initializing, setInitializing] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const initRef = useRef(false);
   useEffect(() => {
     if (!manga || initRef.current) return;
-    if (manga.initialized) {
-      initRef.current = true;
-      return;
-    }
     initRef.current = true;
+    if (manga.initialized && manga.chapters.totalCount > 0) return;
     setInitializing(true);
-    fetchMangaChapters({ id: mangaId }).then(() => {
+    fetchMangaChapters({ id: mangaId }).then((res) => {
       setInitializing(false);
+      if (res.error) setFetchError(res.error.graphQLErrors[0]?.message ?? res.error.message);
       reexecuteDetail({ requestPolicy: 'network-only' });
     });
   }, [manga, mangaId, fetchMangaChapters, reexecuteDetail]);
@@ -212,6 +211,7 @@ function MangaDetailView() {
             <ChapterList
               mangaId={mangaId}
               initializing={initializing}
+              fetchError={fetchError}
               thumbnailUrl={manga.thumbnailUrl}
               storedDesc={
                 manga.meta.find((entry) => entry.key === CHAPTER_SORT_META_KEY)?.value !== 'asc'
@@ -243,11 +243,13 @@ function Description({ text }: { text: string }) {
 function ChapterList({
   mangaId,
   initializing,
+  fetchError,
   thumbnailUrl,
   storedDesc,
 }: {
   mangaId: number;
   initializing: boolean;
+  fetchError: string | null;
   thumbnailUrl?: string | null;
   storedDesc: boolean;
 }) {
@@ -432,7 +434,11 @@ function ChapterList({
         </div>
       )}
 
-      {!showLoading && list && nodes.length === 0 && (
+      {!showLoading && fetchError && nodes.length === 0 && (
+        <ErrorState message={`The source failed to return chapters: ${fetchError}`} />
+      )}
+
+      {!showLoading && !fetchError && list && nodes.length === 0 && (
         <p className="rounded-2xl border border-white/5 bg-zinc-900/40 px-4 py-6 text-center text-sm text-zinc-500">
           No chapters found.
         </p>

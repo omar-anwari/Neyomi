@@ -256,6 +256,9 @@ export const MangaDetailQuery = graphql(`
     manga(id: $id) {
       id
       initialized
+      chapters {
+        totalCount
+      }
       title
       author
       artist
