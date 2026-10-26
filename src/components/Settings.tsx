@@ -17,11 +17,13 @@ import {
   type ReaderTheme,
   type ReadingMode,
 } from '../readerPrefs';
+import { useServerUpdate } from '../serverUpdate';
 import { BrandMark } from './Brand';
 import {
   BookOpenIcon,
   ChevronLeftIcon,
   CompassIcon,
+  ExternalLinkIcon,
   LibraryIcon,
   LogOutIcon,
   SettingsIcon,
@@ -84,6 +86,8 @@ export function Settings() {
           </div>
         </section>
 
+        <ServerInfo />
+
         <section className="mt-6">
           <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Actions</h2>
           <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-surface/85">
@@ -107,6 +111,59 @@ export function Settings() {
         </section>
       </main>
     </div>
+  );
+}
+
+function ServerInfo() {
+  const { about, error, checking, updatesError, sameChannel, otherChannels } = useServerUpdate();
+
+  let status: ReactNode;
+  if (!about || checking) {
+    status = <span className="text-zinc-500">Checking for updates…</span>;
+  } else if (updatesError) {
+    status = <span className="text-zinc-500">Couldn't check for updates</span>;
+  } else if (sameChannel) {
+    status = <span className="text-brand-400">Update available: {sameChannel.tag}</span>;
+  } else {
+    status = <span className="text-zinc-500">Up to date</span>;
+  }
+
+  return (
+    <section className="mt-6">
+      <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Server</h2>
+      <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-surface/85">
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <SettingsIcon className="h-5 w-5 text-zinc-300" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-zinc-200">
+              {about ? `${about.name} ${about.version}` : error ? 'Server version unavailable' : 'Loading…'}
+            </span>
+            <span className="mt-0.5 block truncate text-xs">
+              {about && <span className="text-zinc-500">{about.buildType} · </span>}
+              {error ? <span className="text-zinc-500">{error.message}</span> : status}
+            </span>
+          </span>
+          {!about && !error && <Spinner className="h-4 w-4" />}
+        </div>
+        {[sameChannel, ...otherChannels].filter((update) => update !== undefined).map((update) => (
+          <a
+            key={update.channel}
+            href={update.url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="flex items-center gap-3 border-t border-white/[0.06] px-4 py-3.5 hover:bg-white/[0.04]"
+          >
+            <ExternalLinkIcon className="h-5 w-5 text-zinc-300" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm text-zinc-200">
+                {update.channel} {update.tag}
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-zinc-500">View release notes</span>
+            </span>
+          </a>
+        ))}
+      </div>
+    </section>
   );
 }
 

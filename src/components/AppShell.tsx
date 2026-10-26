@@ -11,6 +11,7 @@ import {
 } from './icons';
 import { clearTokens } from '../auth';
 import { Brand, BrandMark } from './Brand';
+import { ServerUpdateNotice } from './ServerUpdateNotice';
 
 const tabs = [
   { to: '/', label: 'Home', Icon: HomeIcon, end: true },
@@ -94,6 +95,8 @@ export function AppShell() {
       <div className="min-h-0 flex-1 overflow-y-auto md:flex-none md:overflow-visible">
         <Outlet />
       </div>
+
+      <ServerUpdateNotice />
 
       <nav className="pb-safe shrink-0 border-t border-white/[0.07] bg-glass/94 backdrop-blur-2xl md:hidden">
         <div className="flex h-[4.25rem] items-stretch">

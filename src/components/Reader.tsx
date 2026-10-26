@@ -201,7 +201,6 @@ function ReaderView() {
         ? chapter.lastPageRead
         : 0;
     const startPage = Math.min(Math.max(savedPage, 0), pages.length - 1);
-    // Stepping back into a chapter opens it on its last page; that alone shouldn't mark it read.
     if (arrivedAtEnd) lastSentRef.current = startPage;
     setCurrentPage(startPage);
     setStarted(true);
@@ -594,7 +593,6 @@ function WebtoonViewer({
   const restoreTargetRef = useRef<number | null>(null);
   const { containerRef, containerProps, scale } = useWebtoonZoom({ onTap: onToggleUi });
 
-  // Pages have no height until they load, so keep re-scrolling to the saved page until everything above it has loaded.
   const continueRestore = useCallback(() => {
     const target = restoreTargetRef.current;
     if (target == null) return;

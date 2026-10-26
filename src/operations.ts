@@ -439,6 +439,26 @@ export const MangaChaptersQuery = graphql(`
   }
 `);
 
+export const AboutServerQuery = graphql(`
+  query AboutServer {
+    aboutServer {
+      name
+      version
+      buildType
+    }
+  }
+`);
+
+export const ServerUpdatesQuery = graphql(`
+  query ServerUpdates {
+    checkForServerUpdates {
+      channel
+      tag
+      url
+    }
+  }
+`);
+
 export const ServerSettingsQuery = graphql(`
   query ServerSettings {
     settings {
